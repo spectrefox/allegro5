@@ -386,7 +386,7 @@ ALLEGRO_CONFIG *al_load_config_file_f(ALLEGRO_FILE *file)
 
 
 static bool config_write_section(ALLEGRO_FILE *file,
-   const ALLEGRO_CONFIG_SECTION *s, bool *should_blank)
+   const ALLEGRO_CONFIG_SECTION *s)
 {
    ALLEGRO_CONFIG_ENTRY *e;
 
@@ -394,7 +394,6 @@ static bool config_write_section(ALLEGRO_FILE *file,
       al_fputc(file, '[');
       al_fputs(file, al_cstr(s->name));
       al_fputs(file, "]\n");
-      *should_blank = false;
       if (al_ferror(file)) {
          return false;
       }
@@ -410,14 +409,12 @@ static bool config_write_section(ALLEGRO_FILE *file,
             al_fputs(file, al_cstr(e->key));
          }
          al_fputc(file, '\n');
-         *should_blank = false;
       }
       else {
          al_fputs(file, al_cstr(e->key));
          al_fputc(file, '=');
          al_fputs(file, al_cstr(e->value));
          al_fputc(file, '\n');
-         *should_blank = true;
       }
       if (al_ferror(file)) {
          return false;
@@ -452,13 +449,12 @@ bool al_save_config_file(const char *filename, const ALLEGRO_CONFIG *config)
 bool al_save_config_file_f(ALLEGRO_FILE *file, const ALLEGRO_CONFIG *config)
 {
    ALLEGRO_CONFIG_SECTION *s;
-   bool should_blank = false;
 
    /* Save global section */
    s = config->head;
    while (s != NULL) {
       if (al_ustr_size(s->name) == 0) {
-         if (!config_write_section(file, s, &should_blank)) {
+         if (!config_write_section(file, s)) {
             return false;
          }
          break;
@@ -470,10 +466,7 @@ bool al_save_config_file_f(ALLEGRO_FILE *file, const ALLEGRO_CONFIG *config)
    s = config->head;
    while (s != NULL) {
       if (al_ustr_size(s->name) > 0) {
-         if (should_blank) {
-            al_fputs(file, "\n");
-         }
-         if (!config_write_section(file, s, &should_blank)) {
+         if (!config_write_section(file, s)) {
             return false;
          }
       }
@@ -560,7 +553,7 @@ static void destroy_section(ALLEGRO_CONFIG_SECTION *s)
    al_free(s);
 }
 
-   
+
 /* Function: al_destroy_config
  */
 void al_destroy_config(ALLEGRO_CONFIG *config)
@@ -665,15 +658,20 @@ char const *al_get_next_config_entry(ALLEGRO_CONFIG_ENTRY **iterator)
 bool al_remove_config_section(ALLEGRO_CONFIG *config, char const *section)
 {
    ALLEGRO_USTR_INFO section_info;
-   ALLEGRO_USTR const *usection = al_ref_cstr(&section_info, section);
+   ALLEGRO_USTR const *usection;
    void *value;
    ALLEGRO_CONFIG_SECTION *s;
-   
+
+   if (section == NULL)
+      section = "";
+
+   usection = al_ref_cstr(&section_info, section);
+
    value = NULL;
    config->tree = _al_aa_delete(config->tree, usection, cmp_ustr, &value);
    if (!value)
       return false;
-   
+
    s = value;
 
    if (s->prev) {
@@ -683,7 +681,7 @@ bool al_remove_config_section(ALLEGRO_CONFIG *config, char const *section)
       ASSERT(config->head == s);
       config->head = s->next;
    }
-   
+
    if (s->next) {
       s->next->prev = s->prev;
    }
@@ -704,10 +702,15 @@ bool al_remove_config_key(ALLEGRO_CONFIG *config, char const *section,
 {
    ALLEGRO_USTR_INFO section_info;
    ALLEGRO_USTR_INFO key_info;
-   ALLEGRO_USTR const *usection = al_ref_cstr(&section_info, section);
+   ALLEGRO_USTR const *usection;
    ALLEGRO_USTR const *ukey = al_ref_cstr(&key_info, key);
    void *value;
    ALLEGRO_CONFIG_ENTRY * e;
+
+   if (section == NULL)
+      section = "";
+
+   usection = al_ref_cstr(&section_info, section);
 
    ALLEGRO_CONFIG_SECTION *s = find_section(config, usection);
    if (!s)
@@ -717,9 +720,9 @@ bool al_remove_config_key(ALLEGRO_CONFIG *config, char const *section,
    s->tree = _al_aa_delete(s->tree, ukey, cmp_ustr, &value);
    if (!value)
       return false;
-   
+
    e = value;
-   
+
    if (e->prev) {
       e->prev->next = e->next;
    }
@@ -727,7 +730,7 @@ bool al_remove_config_key(ALLEGRO_CONFIG *config, char const *section,
       ASSERT(s->head == e);
       s->head = e->next;
    }
-   
+
    if (e->next) {
       e->next->prev = e->prev;
    }
@@ -735,7 +738,7 @@ bool al_remove_config_key(ALLEGRO_CONFIG *config, char const *section,
       ASSERT(s->last == e);
       s->last = e->prev;
    }
-   
+
    destroy_entry(e);
 
    return true;

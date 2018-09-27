@@ -29,13 +29,15 @@
 #include "make_doc.h"
 
 
-dstr pandoc          = "pandoc";
-dstr pandoc_options  = "";
-dstr protos_file     = "protos";
-dstr to_format       = "html";
-bool raise_sections  = false;
+dstr pandoc                = "pandoc";
+dstr pandoc_options        = "";
+dstr protos_file           = "protos";
+dstr to_format             = "html";
+dstr allegro5_cfg_filename = "";
+bool raise_sections        = false;
 dstr tmp_preprocess_output;
 dstr tmp_pandoc_output;
+dstr git_ref               = "master";
 
 static Aatree *protos = &aa_nil;
 static Aatree *sources = &aa_nil;
@@ -90,6 +92,14 @@ static int process_options(int argc, char *argv[])
          d_assign(to_format, argv[i + 1]);
          i += 2;
       }
+      else if (streq(argv[i], "--allegro5_cfg")) {
+         d_assign(allegro5_cfg_filename, argv[i + 1]);
+         i += 2;
+      }
+      else if (streq(argv[i], "--git_ref")) {
+         d_assign(git_ref, argv[i + 1]);
+         i += 2;
+      }
       else if (streq(argv[i], "--raise-sections")) {
          raise_sections = true;
          i++;
@@ -138,16 +148,45 @@ static void load_prototypes(const char *filename)
 
          d_assign(text, lookup_source(name));
          if (strlen(text) == 0) {
-            strcat(text, "https://github.com/liballeg/allegro5/blob/master/");
-            strcat(text, file_name);
-            strcat(text, "#L");
-            strcat(text, line_number);
+            sprintf(text, "https://github.com/liballeg/allegro5/blob/%s/%s#L%s",
+               git_ref, file_name, line_number);
             sources = aa_insert(sources, name, text);
          }
       }
    }
 
    d_close_input();
+}
+
+
+char *load_allegro5_cfg(void)
+{
+   FILE *f = fopen(allegro5_cfg_filename, "rb");
+   if (!f) {
+      d_abort("could not open file for reading: ", allegro5_cfg_filename);
+   }
+
+   if (fseek(f, 0, SEEK_END)) {
+      d_abort("could not seek to end: ", allegro5_cfg_filename);
+   }
+
+   long length = ftell(f);
+   if (length == -1) {
+      d_abort("could not tell length of file: ", allegro5_cfg_filename);
+   }
+
+   if (fseek(f, 0, SEEK_SET)) {
+      d_abort("could not seek back to beginning: ", allegro5_cfg_filename);
+   }
+   char *ret = malloc(length + 1);
+   size_t read_bytes = fread(ret, 1, length, f);
+   if (read_bytes != (size_t)length) {
+      d_abort("could not read file: ", allegro5_cfg_filename);
+   }
+   fclose(f);
+
+   ret[length] = '\0';
+   return ret;
 }
 
 

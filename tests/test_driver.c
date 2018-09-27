@@ -4,6 +4,7 @@
  *    By Peter Wang.
  */
 
+#define ALLEGRO_UNSTABLE
 #include <ctype.h>
 #include <math.h>
 #include <stdarg.h>
@@ -110,7 +111,7 @@ int               skipped_tests = 0;
 #define C(a)      get_color(V(a))
 #define B(a)      get_bitmap(V(a), bmp_type, target)
 #define SCAN0(fn) \
-      (sscanf(stmt, fn " (" " )") == 0)
+      (sscanf(stmt, fn " %80[(]" " )", ARGS1) == 1)
 #define SCAN(fn, arity) \
       (sscanf(stmt, fn " (" PAT##arity " )", ARGS##arity) == arity)
 #define SCANLVAL(fn, arity) \
@@ -263,11 +264,14 @@ static bool get_bool(char const *value)
 static ALLEGRO_COLOR get_color(char const *value)
 {
    int r, g, b, a;
+   float rf, gf, bf;
 
    if (sscanf(value, "#%02x%02x%02x%02x", &r, &g, &b, &a) == 4)
       return al_map_rgba(r, g, b, a);
    if (sscanf(value, "#%02x%02x%02x", &r, &g, &b) == 3)
       return al_map_rgb(r, g, b);
+   if (sscanf(value, "%f/%f/%f", &rf, &gf, &bf) == 3)
+      return al_map_rgb_f(rf, gf, bf);
    return al_color_name(value);
 }
 
@@ -807,7 +811,7 @@ static void check_hash(ALLEGRO_CONFIG const *cfg, char const *testname,
    }
 
    if (!exp && !sigexp) {
-      printf("NEW  %s [%s] - hash=%s; sig=%s\n",
+      printf("NEW  %s [%s]\n\thash=%s\n\tsig=%s\n",
          testname, bt, hash, sig);
       return;
    }
@@ -998,6 +1002,19 @@ static void do_test(ALLEGRO_CONFIG *cfg, char const *testname,
             get_blender_op(V(3)),
             get_blend_factor(V(4)),
             get_blend_factor(V(5)));
+         continue;
+      }
+
+      if (SCAN("al_set_bitmap_blender", 3)) {
+         al_set_bitmap_blender(
+            get_blender_op(V(0)),
+            get_blend_factor(V(1)),
+            get_blend_factor(V(2)));
+         continue;
+      }
+
+      if (SCAN0("al_reset_bitmap_blender")) {
+         al_reset_bitmap_blender();
          continue;
       }
 
@@ -1440,6 +1457,11 @@ static void do_test(ALLEGRO_CONFIG *cfg, char const *testname,
          set_config_float(cfg, testname, lval, result);
          continue;
       }
+      if (SCANLVAL("round", 1)) {
+         int result  = round(F(0));
+         set_config_int(cfg, testname, lval, result);
+         continue;
+      }
 
       /* Dynamical variable initialisation, needed to properly initialize
        * variables (5.1)*/
@@ -1477,6 +1499,19 @@ static void do_test(ALLEGRO_CONFIG *cfg, char const *testname,
          set_config_int(cfg, testname, V(4), bbw);
          set_config_int(cfg, testname, V(5), bbh);
          set_config_int(cfg, testname, lval, ok);
+         continue;
+      }
+
+      if (SCANLVAL("al_color_distance_ciede2000", 2)) {
+         float d = al_color_distance_ciede2000(C(0), C(1));
+         set_config_float(cfg, testname, lval, d);
+         continue;
+      }
+      if (SCANLVAL("al_color_lab", 3)) {
+         ALLEGRO_COLOR rgb = al_color_lab(F(0), F(1), F(2));
+         char hex[100];
+         sprintf(hex, "%f/%f/%f", rgb.r, rgb.g, rgb.b);
+         al_set_config_value(cfg, testname, lval, hex);
          continue;
       }
 
@@ -1538,7 +1573,9 @@ static void sw_hw_test(ALLEGRO_CONFIG *cfg, char const *testname)
    int old_failed_tests = failed_tests;
    bool reliable;
    char const *hw_only_str = al_get_config_value(cfg, testname, "hw_only");
+   char const *sw_only_str = al_get_config_value(cfg, testname, "sw_only");
    bool hw_only = hw_only_str && get_bool(hw_only_str);
+   bool sw_only = sw_only_str && get_bool(sw_only_str);
 
    al_set_new_bitmap_flags(ALLEGRO_MEMORY_BITMAP);
    if (!hw_only) {
@@ -1546,6 +1583,8 @@ static void sw_hw_test(ALLEGRO_CONFIG *cfg, char const *testname)
    }
 
    reliable = (failed_tests == old_failed_tests);
+
+   if (sw_only) return;
 
    if (display) {
       al_set_new_bitmap_flags(ALLEGRO_VIDEO_BITMAP);

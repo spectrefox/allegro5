@@ -72,9 +72,9 @@ bool _al_opengl_set_blender(ALLEGRO_DISPLAY *ogl_disp)
 
    (void)ogl_disp;
 
-   al_get_separate_blender(&op, &src_color, &dst_color,
+   al_get_separate_bitmap_blender(&op, &src_color, &dst_color,
       &op_alpha, &src_alpha, &dst_alpha);
-   const_color = al_get_blend_color();
+   const_color = al_get_bitmap_blend_color();
    /* glBlendFuncSeparate was only included with OpenGL 1.4 */
 #if !defined ALLEGRO_CFG_OPENGLES
    if (ogl_disp->ogl_extras->ogl_info.version >= _ALLEGRO_OPENGL_VERSION_1_4) {
@@ -213,59 +213,6 @@ static void tex_ptr_off(ALLEGRO_DISPLAY *display)
    }
 }
 
-/* There's a very nasty bug in Android 2.1 that makes glClear cause
- * screen flicker (appears to me it's swapping buffers.) Work around
- * by drawing two triangles instead on that OS.
- */
-static void ogl_clear_android_2_1_workaround(ALLEGRO_DISPLAY *d,
-   float r, float g, float b, float a)
-{
-   GLfloat v[8] = {
-      0, d->h,
-      0, 0,
-      d->w, d->h,
-      d->w, 0
-   };
-   GLfloat c[16] = {
-      r, g, b, a,
-      r, g, b, a,
-      r, g, b, a,
-      r, g, b, a
-   };
-   ALLEGRO_TRANSFORM bak1, bak2, t;
-
-   al_copy_transform(&bak1, al_get_current_projection_transform());
-   al_copy_transform(&bak2, al_get_current_transform());
-
-   al_identity_transform(&t);
-   al_orthographic_transform(&t, 0, 0, -1, d->w, d->h, 1);
-
-   al_use_projection_transform(&t);
-   al_identity_transform(&t);
-   al_use_transform(&t);
-
-   _al_opengl_set_blender(d);
-
-   vert_ptr_on(d, 2, GL_FLOAT, 2*sizeof(float), v);
-   color_ptr_on(d, 4, GL_FLOAT, 4*sizeof(float), c);
-
-   if (!(d->flags & ALLEGRO_PROGRAMMABLE_PIPELINE)) {
-      glDisableClientState(GL_NORMAL_ARRAY);
-      glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-   }
-
-   glDisable(GL_TEXTURE_2D);
-   glBindTexture(GL_TEXTURE_2D, 0);
-
-   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-   vert_ptr_off(d);
-   color_ptr_off(d);
-
-   al_use_projection_transform(&bak1);
-   al_use_transform(&bak2);
-}
-
 static void ogl_clear(ALLEGRO_DISPLAY *d, ALLEGRO_COLOR *color)
 {
    ALLEGRO_DISPLAY *ogl_disp = (void *)d;
@@ -287,11 +234,6 @@ static void ogl_clear(ALLEGRO_DISPLAY *d, ALLEGRO_COLOR *color)
    }
 
    al_unmap_rgba_f(*color, &r, &g, &b, &a);
-
-   if (ogl_target->is_backbuffer && IS_ANDROID_AND(_al_android_is_os_2_1())) {
-      ogl_clear_android_2_1_workaround(d, r, g, b, a);
-      return;
-   }
 
    glClearColor(r, g, b, a);
    glClear(GL_COLOR_BUFFER_BIT);
@@ -428,7 +370,7 @@ static void ogl_flush_vertex_cache(ALLEGRO_DISPLAY *disp)
        * shader and enable them.
        */
       if (o->varlocs.pos_loc >= 0)  {
-         glVertexAttribPointer(o->varlocs.pos_loc, 2, GL_FLOAT, false, stride,
+         glVertexAttribPointer(o->varlocs.pos_loc, 3, GL_FLOAT, false, stride,
             (void *)offsetof(ALLEGRO_OGL_BITMAP_VERTEX, x));
          glEnableVertexAttribArray(o->varlocs.pos_loc);
       }
@@ -448,7 +390,7 @@ static void ogl_flush_vertex_cache(ALLEGRO_DISPLAY *disp)
    else
 #endif
    {
-      vert_ptr_on(disp, 2, GL_FLOAT, sizeof(ALLEGRO_OGL_BITMAP_VERTEX),
+      vert_ptr_on(disp, 3, GL_FLOAT, sizeof(ALLEGRO_OGL_BITMAP_VERTEX),
          (char *)(disp->vertex_cache) + offsetof(ALLEGRO_OGL_BITMAP_VERTEX, x));
       tex_ptr_on(disp, 2, GL_FLOAT, sizeof(ALLEGRO_OGL_BITMAP_VERTEX),
          (char*)(disp->vertex_cache) + offsetof(ALLEGRO_OGL_BITMAP_VERTEX, tx));

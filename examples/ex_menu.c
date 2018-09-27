@@ -61,7 +61,6 @@ int main(int argc, char **argv)
 {
    const int initial_width = 320;
    const int initial_height = 200;
-   int windows_menu_height = 0;
    int dcount = 0;
 
    ALLEGRO_DISPLAY *display;
@@ -156,7 +155,7 @@ int main(int argc, char **argv)
             dh *= 1.2 + 0.2 * cos(1.1 * t);
             al_draw_scaled_bitmap(bg, 0, 0, sw, sh,
                cx - dw/2, cy - dh/2, dw, dh, 0);
-	 }
+         }
          al_flip_display();
       }
 
@@ -235,10 +234,7 @@ int main(int argc, char **argv)
                   w = 960;
                if (h > 600)
                   h = 600;
-               if (menu_visible)
-                  al_resize_display(display, w, h + windows_menu_height);
-               else
-                  al_resize_display(display, w, h);
+               al_resize_display(display, w, h);
             }
             else if (event.user.data1 == FILE_FULLSCREEN_ID) {
                int flags = al_get_display_flags(display);
@@ -260,8 +256,11 @@ int main(int argc, char **argv)
       else if (event.type == ALLEGRO_EVENT_MOUSE_BUTTON_UP) {
          /* Popup a context menu on a right click. */
          if (event.mouse.display == display && event.mouse.button == 2) {
-            if (pmenu)
-               al_popup_menu(pmenu, display);
+            if (pmenu) {
+               if (!al_popup_menu(pmenu, display)) {
+                  log_printf("Couldn't popup menu!\n");
+               }
+            }
          }
       }
       else if (event.type == ALLEGRO_EVENT_KEY_CHAR) {
@@ -280,18 +279,6 @@ int main(int argc, char **argv)
       else if (event.type == ALLEGRO_EVENT_DISPLAY_RESIZE) {
          al_acknowledge_resize(display);
          redraw = true;
-
-#ifdef ALLEGRO_WINDOWS
-         /* XXX The Windows implementation currently uses part of the client's
-          * height to render the window. This triggers a resize event, which
-          * can be trapped and used to compute the menu height, and then
-          * resize the display again to what we expect it to be.
-          */
-         if (event.display.source == display && windows_menu_height == 0) {
-            windows_menu_height = initial_height - al_get_display_height(display);
-            al_resize_display(display, initial_width, initial_height + windows_menu_height);
-         }
-#endif
       }
       else if (event.type == ALLEGRO_EVENT_TIMER) {
          redraw = true;

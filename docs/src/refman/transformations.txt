@@ -37,13 +37,13 @@ variants (the latter with a `_3d` suffix), so you don't have to deal with the
 underlying matrix algebra yourself.
 
 The transformations are combined in the order of the function invocations. Thus
-to create a transformation that first rotates a point and then translates it, 
+to create a transformation that first rotates a point and then translates it,
 you would (starting with an identity transformation) call [al_rotate_transform]
 and then [al_translate_transform]. This approach is opposite of what OpenGL uses
-but similar to what Direct3D uses. 
+but similar to what Direct3D uses.
 
 For those who know the matrix algebra going behind the scenes, what the
-transformation functions in Allegro do is "pre-multiply" the successive 
+transformation functions in Allegro do is "pre-multiply" the successive
 transformations. So, for example, if you have code that does:
 
 ~~~~c
@@ -58,8 +58,8 @@ al_compose_transform(&T, &T4);
 The resultant matrix multiplication expression will look like this:
 
     T4 * T3 * T2 * T1
-    
-Since the point coordinate vector term will go on the right of that sequence of 
+
+Since the point coordinate vector term will go on the right of that sequence of
 factors, the transformation that is called first, will also be applied first.
 
 This means if you have code like this:
@@ -147,7 +147,7 @@ See also: [al_get_current_projection_transform]
 
 ## API: al_use_projection_transform
 
-Sets the projection transformation to be used for the the drawing operations on
+Sets the projection transformation to be used for the drawing operations on
 the target bitmap (each bitmap maintains its own projection transformation).
 Every drawing operation after this call will be transformed using this
 transformation. To return default behavior, call this function with an
@@ -181,7 +181,7 @@ safe to pass references to local variables.
 
 Since: 5.1.9
 
-See also: [al_get_current_projection_transform]
+See also: [al_get_current_projection_transform], [al_perspective_transform], [al_orthographic_transform]
 
 ## API: al_get_current_projection_transform
 
@@ -202,11 +202,14 @@ If there is no target bitmap, this function returns NULL.
 This is similar to calling `al_invert_transform(al_get_current_transform())`
 but the result of this function is cached.
 
+> *Note*: Allegro's transformation inversion functions work correctly only 
+with 2D transformations.
+
 Since: 5.1.0
 
 ## API: al_invert_transform
 
-Inverts the passed transformation. If the transformation is nearly singular 
+Inverts the passed transformation. If the transformation is nearly singular
 (close to not having an inverse) then the returned transformation may be
 invalid. Use [al_check_inverse] to ascertain if the transformation has an
 inverse before inverting it if you are in doubt.
@@ -215,12 +218,15 @@ inverse before inverting it if you are in doubt.
 
 * trans - Transformation to invert
 
+> *Note*: Allegro's transformation inversion functions work correctly only 
+with 2D transformations.
+
 See also: [al_check_inverse]
 
 ## API: al_check_inverse
 
-Checks if the transformation has an inverse using the supplied tolerance. 
-Tolerance should be a small value between 0 and 1, with 1e-7 being sufficient 
+Checks if the transformation has an inverse using the supplied tolerance.
+Tolerance should be a small value between 0 and 1, with 1e-7 being sufficient
 for most applications.
 
 In this function tolerance specifies how close the determinant can be to
@@ -232,10 +238,10 @@ if you transformed a point by a transformation and then transformed it
 again by the inverse transformation that passed this check, the resultant
 point should less than 1/1000's of a pixel away from the original point.
 
-Note that this check is superfluous most of the time if 
-you never touched the transformation matrix values yourself. The only 
-thing that would cause the transformation to not have an inverse is if 
-you applied a 0 (or very small) scale to the transformation or you have 
+Note that this check is superfluous most of the time if
+you never touched the transformation matrix values yourself. The only
+thing that would cause the transformation to not have an inverse is if
+you applied a 0 (or very small) scale to the transformation or you have
 a really large translation. As long as the scale is comfortably above 0,
 the transformation will be invertible.
 
@@ -246,6 +252,9 @@ the transformation will be invertible.
 
 *Returns:*
 1 if the transformation is invertible, 0 otherwise
+
+> *Note*: Allegro's transformation inversion functions work correctly only 
+with 2D transformations.
 
 See also: [al_invert_transform]
 
@@ -389,9 +398,69 @@ Transform x, y, z coordinates.
 * trans - Transformation to use
 * x, y, z - Pointers to the coordinates
 
+Note: If you are using a projection transform you most likely will want
+to use [al_transform_coordinates_3d_projective] instead.
+
 Since 5.1.9
 
 See also: [al_use_transform], [al_transform_coordinates]
+
+## API: al_transform_coordinates_4d
+
+Transform x, y, z, w coordinates.
+
+*Parameters:*
+
+* trans - Transformation to use
+* x, y, z, w - Pointers to the coordinates
+
+Since 5.2.4
+
+See also: [al_use_transform], [al_transform_coordinates], [al_transform_coordinates_3d]
+
+## API: al_transform_coordinates_3d_projective
+
+Transform x, y, z as homogeneous coordinates. This is the same as using
+[al_transform_coordinates_4d] with the w coordinate set to 1, then
+dividing x, y, z by the resulting w. This will provide the same
+normalized coordinates Allegro will draw to when a projective transform is in
+effect as set with [al_use_projection_transform]. To get the actual
+pixel coordinates from those translate and scale like so (w and h would
+be the pixel dimensions of the target bitmap):
+
+~~~~c
+x = w / 2 + x * w / 2
+y = h / 2 - y * h / 2
+~~~~
+
+*Parameters:*
+
+* trans - Transformation to use
+* x, y, z - Pointers to the coordinates
+
+Example:
+
+~~~~c
+ALLEGRO_TRANSFORM t2;
+al_copy_transform(&t2, al_get_current_transform());
+al_compose_transform(&t2, al_get_current_projection_transform());
+
+ALLEGRO_TRANSFORM t3;
+al_identity_transform(&t3);
+al_scale_transform(&t3, 0.5, -0.5);
+al_translate_transform(&t3, 0.5, 0.5);
+al_scale_transform(&t3, al_get_bitmap_width(al_get_target_bitmap()),
+                   al_get_bitmap_height(al_get_target_bitmap()));
+
+al_transform_coordinates_3d_projective(&t2, &x, &y, &z);
+// x, y now contain normalized coordinates
+al_transform_coordinates(&t3, &x, &y);
+// x, y now contain pixel coordinates
+~~~~
+
+Since 5.2.4
+
+See also: [al_use_transform], [al_transform_coordinates], [al_transform_coordinates_3d], [al_use_projection_transform]
 
 ## API: al_compose_transform
 
@@ -414,8 +483,23 @@ See also: [al_translate_transform], [al_rotate_transform], [al_scale_transform]
 
 Combines the given transformation with an orthographic transformation which
 maps the screen rectangle to the given left/top and right/bottom coordinates.
-near/far is the z-buffer range, if there is no z-buffer you can set it to
--1/1.
+
+near/far is the z range, coordinates outside of that range will get clipped.
+Normally -1/1 is fine because all 2D graphics will have a z coordinate of 0.
+However if you for example do al_draw_rectangle(0, 0, 100, 100) and rotate
+around the x axis ("towards the screen") make sure your z range allows values
+from -100 to 100 or the rotated rectangle will get clipped.
+
+Also, if you are using a depth buffer the z range decides the depth
+resolution. For example if you have a 16 bit depth buffer there are only
+65536 discrete depth values. So if your near/far is set to -1000000/1000000
+most of the z positions would not result in separate depth values which
+could lead to artifacts.
+
+The result of applying this transformation to coordinates will be to
+normalize visible coordinates into the cube from -1/-1/-1 to 1/1/1. Such
+a transformation is mostly useful for passing it to
+[al_use_projection_transform] - see that function for an example use.
 
 Since: 5.1.3
 
@@ -430,6 +514,72 @@ transformation.
 To use a specific horizontal field of view you can use the relation:
 
     tan(hfov / 2) = (right - left) / 2 / near
+
+and therefore
+
+    near = (right - left) / 2 / tan(hfov / 2)
+
+Example 1:
+
+~~~~c
+   float w = 800, h = 450; // assume our display is 800 x 450
+   float fov = tan(90 * ALLEGRO_PI / 180 / 2); // 90 degree field of view
+
+   // Our projection goes from 0/0 to w/h with the near parameter set
+   // for a 90 degree horizontal viewing angle.
+   ALLEGRO_TRANSFORM projection;
+   al_identity_transform(&projection);
+   al_perspective_transform(&projection, 0, 0,
+    w / 2 / fov,
+    w, h,
+    2000);
+   al_use_projection_transform(&projection);
+
+   // Set the camera z to +400 (which is exactly the near distance)
+   ALLEGRO_TRANSFORM camera;
+   al_build_camera_transform(&camera, 0, 0, 400, 0, 0, 0, 0, 1, 0);
+   al_use_transform(&camera);
+
+   // This will draw two rectangles at the left and right edge of the
+   // screen and vertically centered. The x distance between them is 800
+   // units, but the camera transform moves them 400 along z, so with
+   // a 90° viewing angle both are visible.
+   al_draw_filled_rectangle(0, 200, 50, 250, red;
+   al_draw_filled_rectangle(750, 200, 800, 250, red);
+~~~~
+Example 2:
+
+~~~~c
+   float w = 800, h = 450; // assume our display is 800 x 450
+   float fov = tan(90 * ALLEGRO_PI / 180 / 2); // 90 degree field of view
+   float aspect = h / w;
+   float zoom = 2; // enlarge x 2
+
+   // This projection is very different from the one in the first example.
+   // Here we map the left and right edge of the screen to -1 and +1. And
+   // the y axis goes from -1 at the bottom to +1 at the top, scaled by
+   // the aspect ratio. We also add a zoom parameter so we can control
+   // the visible portion of the scene independent of the field of view.
+   ALLEGRO_TRANSFORM projection;
+   al_identity_transform(&projection);
+   al_perspective_transform(&projection,
+      -1 / zoom, aspect / zoom,
+      1 / fov,
+      1 / zoom, -aspect / zoom,
+      2000);
+   al_use_projection_transform(&projection);
+
+   // Moves everything by -4 in the z direction.
+   ALLEGRO_TRANSFORM camera;
+   al_build_camera_transform(&camera, 0, 0, 4, 0, 0, 0, 0, 1, 0);
+   al_use_transform(&camera);
+
+   // At a z distance of 4 with a 90° hfov everything would be scaled
+   // down to 25%. However we also zoom 2-fold, so the final scaling is
+   // 50%. This rectangle therefore will appear at a size of 400 x 225
+   // pixel (assuming the display is 800 x 450).
+   al_draw_filled_rectangle(-1, -1, 1, 1, red);
+~~~~
 
 Since: 5.1.3
 
@@ -457,6 +607,9 @@ See also: [al_use_projection_transform]
 
 Combines the given transformation with a transformation which rotates
 coordinates around the given vector by the given angle in radians.
+
+Note: The vector is assumed to be of unit length (otherwise it will
+also incur a scale).
 
 Since: 5.1.3
 

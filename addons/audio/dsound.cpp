@@ -59,6 +59,22 @@ static int buffer_size; // in bytes
 #define MIN_FILL           512
 #define MAX_FILL           1024
 
+static HWND get_window()
+{
+   const char *val = al_get_config_value(al_get_system_config(),
+      "directsound", "window");
+   HWND ret;
+   if (val && strncmp(val, "foreground", 10) == 0) {
+      ret = GetForegroundWindow();
+      ALLEGRO_INFO("Using foreground window: %p\n", ret);
+   }
+   else {
+      ret = GetDesktopWindow();
+      ALLEGRO_INFO("Using desktop window: %p\n", ret);
+   }
+   return ret;
+}
+
 static void dsound_set_buffer_size(int bits_per_sample)
 {
    int buffer_size_in_samples = 8192; // default
@@ -174,6 +190,9 @@ static void* _dsound_update(ALLEGRO_THREAD *self, void *arg)
       memcpy(ptr2, data + block1_bytes, block2_bytes);
       ex_data->ds8_buffer->Unlock(ptr1, block1_bytes, ptr2, block2_bytes);
    }
+   else {
+      ALLEGRO_ERROR("Lock failed: %s\n", ds_get_error(hr));
+   }
 
    ex_data->ds8_buffer->Play(0, 0, DSBPLAY_LOOPING);
 
@@ -225,6 +244,9 @@ static void* _dsound_update(ALLEGRO_THREAD *self, void *arg)
             ALLEGRO_ERROR("Unlock failed: %s\n", ds_get_error(hr));
          }
       }
+      else {
+         ALLEGRO_ERROR("Lock failed: %s\n", ds_get_error(hr));
+      }
       saved_play_cursor += block1_bytes + block2_bytes;
       saved_play_cursor %= buffer_size;
    } while (!ex_data->stop_voice);
@@ -241,7 +263,7 @@ static void* _dsound_update(ALLEGRO_THREAD *self, void *arg)
 
 
 /* The open method starts up the driver and should lock the device, using the
-   previously set paramters, or defaults. It shouldn't need to start sending
+   previously set parameters, or defaults. It shouldn't need to start sending
    audio data to the device yet, however. */
 static int _dsound_open()
 {
@@ -251,16 +273,15 @@ static int _dsound_open()
    /* FIXME: Use default device until we have device enumeration */
    hr = DirectSoundCreate8(NULL, &device, NULL);
    if (FAILED(hr)) {
-      ALLEGRO_ERROR("DirectSoundCreate8 failed\n");
+      ALLEGRO_ERROR("DirectSoundCreate8 failed: %s\n", ds_get_error(hr));
       return 1;
    }
 
    ALLEGRO_DEBUG("DirectSoundCreate8 succeeded\n");
 
-   /* FIXME: The window specified here is probably very wrong. NULL won't work either. */
-   hr = device->SetCooperativeLevel(GetForegroundWindow(), DSSCL_PRIORITY);
+   hr = device->SetCooperativeLevel(get_window(), DSSCL_PRIORITY);
    if (FAILED(hr)) {
-      ALLEGRO_ERROR("SetCooperativeLevel failed\n");
+      ALLEGRO_ERROR("SetCooperativeLevel failed: %s\n", ds_get_error(hr));
       return 1;
    }
 
@@ -396,8 +417,7 @@ static int _dsound_load_voice(ALLEGRO_VOICE *voice, const void *_data)
 
    hr = device->CreateSoundBuffer(&ex_data->desc, &ex_data->ds_buffer, NULL);
    if (FAILED(hr)) {
-      ALLEGRO_ERROR("CreateSoundBuffer failed\n");
-      al_free(ex_data);
+      ALLEGRO_ERROR("CreateSoundBuffer failed: %s\n", ds_get_error(hr));
       return 1;
    }
 
@@ -406,7 +426,7 @@ static int _dsound_load_voice(ALLEGRO_VOICE *voice, const void *_data)
    hr = ex_data->ds8_buffer->Lock(0, voice->buffer_size,
       &ptr1, &block1_bytes, &ptr2, &block2_bytes, 0);
    if (FAILED(hr)) {
-      ALLEGRO_ERROR("Locking buffer failed\n");
+      ALLEGRO_ERROR("Locking buffer failed: %s\n", ds_get_error(hr));
       return 1;
    }
 
@@ -448,7 +468,7 @@ static int _dsound_start_voice(ALLEGRO_VOICE *voice)
    if (!voice->is_streaming) {
       hr = ex_data->ds8_buffer->Play(0, 0, 0);
       if (FAILED(hr)) {
-         ALLEGRO_ERROR("Streaming voice failed to start\n");
+         ALLEGRO_ERROR("Streaming voice failed to start: %s\n", ds_get_error(hr));
          return 1;
       }
       ALLEGRO_INFO("Streaming voice started\n");
@@ -476,7 +496,6 @@ static int _dsound_start_voice(ALLEGRO_VOICE *voice)
       hr = device->CreateSoundBuffer(&ex_data->desc, &ex_data->ds_buffer, NULL);
       if (FAILED(hr)) {
          ALLEGRO_ERROR("CreateSoundBuffer failed: %s\n", ds_get_error(hr));
-         al_free(ex_data);
          return 1;
       }
 
@@ -576,7 +595,7 @@ static unsigned int _dsound_get_voice_position(const ALLEGRO_VOICE *voice)
 
    hr = ex_data->ds8_buffer->GetCurrentPosition(&play_pos, NULL);
    if (FAILED(hr)) {
-      ALLEGRO_ERROR("GetCurrentPosition failed\n");
+      ALLEGRO_ERROR("GetCurrentPosition failed: %s\n", ds_get_error(hr));
       return 0;
    }
 
@@ -595,7 +614,7 @@ static int _dsound_set_voice_position(ALLEGRO_VOICE *voice, unsigned int val)
 
    hr = ex_data->ds8_buffer->SetCurrentPosition(val);
    if (FAILED(hr)) {
-      ALLEGRO_ERROR("SetCurrentPosition failed\n");
+      ALLEGRO_ERROR("SetCurrentPosition failed: %s\n", ds_get_error(hr));
       return 1;
    }
 
@@ -730,14 +749,13 @@ static int _dsound_open_recorder(ALLEGRO_AUDIO_RECORDER *r)
    /* FIXME: Use default device until we have device enumeration */
    hr = DirectSoundCaptureCreate8(NULL, &capture_device, NULL);
    if (FAILED(hr)) {
-      ALLEGRO_ERROR("DirectSoundCaptureCreate8 failed\n");
+      ALLEGRO_ERROR("DirectSoundCaptureCreate8 failed: %s\n", ds_get_error(hr));
       return 1;
    }
    
-   /* FIXME: The window specified here is probably very wrong. NULL won't work either. */
-   hr = device->SetCooperativeLevel(GetForegroundWindow(), DSSCL_PRIORITY);
+   hr = device->SetCooperativeLevel(get_window(), DSSCL_PRIORITY);
    if (FAILED(hr)) {
-      ALLEGRO_ERROR("SetCooperativeLevel failed\n");
+      ALLEGRO_ERROR("SetCooperativeLevel failed: %s\n", ds_get_error(hr));
       return 1;
    }
 
@@ -745,8 +763,9 @@ static int _dsound_open_recorder(ALLEGRO_AUDIO_RECORDER *r)
 
    DSCCAPS dsccaps;   
    dsccaps.dwSize = sizeof(DSCCAPS);
-   if (capture_device->GetCaps(&dsccaps) != DS_OK) {
-      ALLEGRO_ERROR("DirectSoundCaptureCreate8::GetCaps failed\n");
+   hr = capture_device->GetCaps(&dsccaps);
+   if (FAILED(hr)) {
+      ALLEGRO_ERROR("DirectSoundCaptureCreate8::GetCaps failed: %s\n", ds_get_error(hr));
    }
    else {
       ALLEGRO_INFO("caps: %lu %lu\n", dsccaps.dwFormats, dsccaps.dwFormats & WAVE_FORMAT_2M16);

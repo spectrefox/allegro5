@@ -22,6 +22,9 @@ find_package_handle_standard_args(DUMB DEFAULT_MSG
 
 if(DUMB_FOUND)
   set(DUMB_LIBRARIES ${DUMB_LIBRARY})
+  if(NOT MSVC)
+    set(DUMB_LIBRARIES ${DUMB_LIBRARIES};m)
+  endif()
 else(DUMB_FOUND)
   set(DUMB_LIBRARIES)
 endif(DUMB_FOUND)

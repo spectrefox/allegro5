@@ -15,26 +15,26 @@
 ALLEGRO_DEBUG_CHANNEL("image")
 
 
-double _al_png_screen_gamma = -1.0;
-int _al_png_compression_level = Z_BEST_COMPRESSION;
-
-
-
 /* get_gamma:
  *  Get screen gamma value one of three ways.
  */
 static double get_gamma(void)
 {
-   if (_al_png_screen_gamma == -1.0) {
+   double gamma = -1.0;
+   const char* config = al_get_config_value(al_get_system_config(), "image", "png_screen_gamma");
+   if (config) {
+      gamma = strtod(config, NULL);
+   }
+   if (gamma == -1.0) {
       /* Use the environment variable if available.
        * 2.2 is a good guess for PC monitors.
        * 1.1 is good for my laptop.
        */
       const char *gamma_str = getenv("SCREEN_GAMMA");
-      return (gamma_str) ? atof(gamma_str) : 2.2;
+      return (gamma_str) ? strtod(gamma_str, NULL) : 2.2;
    }
 
-   return _al_png_screen_gamma;
+   return gamma;
 }
 
 
@@ -146,9 +146,8 @@ static ALLEGRO_BITMAP *really_load_png(png_structp png_ptr, png_infop info_ptr,
       png_set_gray_to_rgb(png_ptr);
 
    /* Optionally, tell libpng to handle the gamma correction for us. */
-   if (_al_png_screen_gamma != 0.0) {
-      screen_gamma = get_gamma();
-
+   screen_gamma = get_gamma();
+   if (screen_gamma != 0.0) {
       if (png_get_sRGB(png_ptr, info_ptr, &intent))
          png_set_gamma(png_ptr, screen_gamma, 0.45455);
       else {
@@ -412,8 +411,10 @@ ALLEGRO_BITMAP *_al_load_png(const char *filename, int flags)
    ALLEGRO_ASSERT(filename);
 
    fp = al_fopen(filename, "rb");
-   if (!fp)
+   if (!fp) {
+      ALLEGRO_ERROR("Unable to open %s for reading.\n", filename);
       return NULL;
+   }
 
    bmp = _al_load_png_f(fp, flags);
 
@@ -450,6 +451,25 @@ static void flush_data(png_structp png_ptr)
    (void)png_ptr;
 }
 
+/* translate_compression_level:
+ *  Translate string with config value into proper zlib's
+ *  compression level. Assumes default on NULL.
+ */
+static int translate_compression_level(const char* value) {
+   if (!value || strcmp(value, "default") == 0) {
+      return Z_DEFAULT_COMPRESSION;
+   }
+   if (strcmp(value, "best") == 0) {
+      return Z_BEST_COMPRESSION;
+   }
+   if (strcmp(value, "fastest") == 0) {
+      return Z_BEST_SPEED;
+   }
+   if (strcmp(value, "none") == 0) {
+      return Z_NO_COMPRESSION;
+   }
+   return strtol(value, NULL, 10);
+}
 
 /* save_rgba:
  *  Core save routine for 32 bpp images.
@@ -492,16 +512,21 @@ bool _al_save_png_f(ALLEGRO_FILE *fp, ALLEGRO_BITMAP *bmp)
     */
    png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING,
                                      (void *)NULL, NULL, NULL);
-   if (!png_ptr)
+   if (!png_ptr) {
+      ALLEGRO_ERROR("Unable to create PNG write struct.\n");
       goto Error;
+   }
 
    /* Allocate/initialize the image information data. */
    info_ptr = png_create_info_struct(png_ptr);
-   if (!info_ptr)
+   if (!info_ptr) {
+      ALLEGRO_ERROR("Unable to create PNG info struct.\n");
       goto Error;
+   }
 
    /* Set error handling. */
    if (setjmp(jmpbuf)) {
+      ALLEGRO_ERROR("Failed to call setjmp.\n");
       goto Error;
    }
    png_set_error_fn(png_ptr, jmpbuf, user_error_fn, NULL);
@@ -520,7 +545,10 @@ bool _al_save_png_f(ALLEGRO_FILE *fp, ALLEGRO_BITMAP *bmp)
    colour_type = PNG_COLOR_TYPE_RGB_ALPHA;
 
    /* Set compression level. */
-   png_set_compression_level(png_ptr, _al_png_compression_level);
+   int z_level = translate_compression_level(
+      al_get_config_value(al_get_system_config(), "image", "png_compression_level")
+   );
+   png_set_compression_level(png_ptr, z_level);
 
    png_set_IHDR(png_ptr, info_ptr,
                 al_get_bitmap_width(bmp), al_get_bitmap_height(bmp),
@@ -538,8 +566,10 @@ bool _al_save_png_f(ALLEGRO_FILE *fp, ALLEGRO_BITMAP *bmp)
     * PNG_TEXT_COMPRESSION_zTXt_WR, so it doesn't get written out again
     * at the end.
     */
-   if (!save_rgba(png_ptr, bmp))
+   if (!save_rgba(png_ptr, bmp)) {
+      ALLEGRO_ERROR("save_rgba failed.\n");
       goto Error;
+   }
 
    png_write_end(png_ptr, info_ptr);
 

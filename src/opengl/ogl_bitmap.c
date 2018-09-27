@@ -193,9 +193,9 @@ char const *_al_gl_error_string(GLenum e)
 }
 #undef ERR
 
-static INLINE void transform_vertex(float* x, float* y)
+static INLINE void transform_vertex(float* x, float* y, float* z)
 {
-   al_transform_coordinates(al_get_current_transform(), x, y);
+   al_transform_coordinates_3d(al_get_current_transform(), x, y, z);
 }
 
 static void draw_quad(ALLEGRO_BITMAP *bitmap,
@@ -235,6 +235,7 @@ static void draw_quad(ALLEGRO_BITMAP *bitmap,
 
    verts[0].x = 0;
    verts[0].y = dh;
+   verts[0].z = 0;
    verts[0].tx = tex_l;
    verts[0].ty = tex_b;
    verts[0].r = tint.r;
@@ -244,6 +245,7 @@ static void draw_quad(ALLEGRO_BITMAP *bitmap,
    
    verts[1].x = 0;
    verts[1].y = 0;
+   verts[1].z = 0;
    verts[1].tx = tex_l;
    verts[1].ty = tex_t;
    verts[1].r = tint.r;
@@ -253,6 +255,7 @@ static void draw_quad(ALLEGRO_BITMAP *bitmap,
    
    verts[2].x = dw;
    verts[2].y = dh;
+   verts[2].z = 0;
    verts[2].tx = tex_r;
    verts[2].ty = tex_b;
    verts[2].r = tint.r;
@@ -262,6 +265,7 @@ static void draw_quad(ALLEGRO_BITMAP *bitmap,
    
    verts[4].x = dw;
    verts[4].y = 0;
+   verts[4].z = 0;
    verts[4].tx = tex_r;
    verts[4].ty = tex_t;
    verts[4].r = tint.r;
@@ -271,10 +275,10 @@ static void draw_quad(ALLEGRO_BITMAP *bitmap,
    
    if (disp->cache_enabled) {
       /* If drawing is batched, we apply transformations manually. */
-      transform_vertex(&verts[0].x, &verts[0].y);
-      transform_vertex(&verts[1].x, &verts[1].y);
-      transform_vertex(&verts[2].x, &verts[2].y);
-      transform_vertex(&verts[4].x, &verts[4].y);
+      transform_vertex(&verts[0].x, &verts[0].y, &verts[0].z);
+      transform_vertex(&verts[1].x, &verts[1].y, &verts[1].z);
+      transform_vertex(&verts[2].x, &verts[2].y, &verts[2].z);
+      transform_vertex(&verts[4].x, &verts[4].y, &verts[4].z);
    }
    verts[3] = verts[1];
    verts[5] = verts[2];
@@ -599,12 +603,10 @@ static void ogl_bitmap_pointer_changed(ALLEGRO_BITMAP *bitmap,
 static bool can_flip_blocks(ALLEGRO_PIXEL_FORMAT format)
 {
    switch (format) {
-#ifdef ALLEGRO_CFG_OPENGL_S3TC_LOCKING
       case ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT1:
       case ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT3:
       case ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT5:
          return true;
-#endif
       default:
          return false;
    }
@@ -618,7 +620,6 @@ static void ogl_flip_blocks(ALLEGRO_LOCKED_REGION *lr, int wc, int hc)
    unsigned char* data = lr->data;
    ASSERT(can_flip_blocks(lr->format));
    switch (lr->format) {
-#ifdef ALLEGRO_CFG_OPENGL_S3TC_LOCKING
       case ALLEGRO_PIXEL_FORMAT_COMPRESSED_RGBA_DXT1: {
          for (y = 0; y < hc; y++) {
             unsigned char* row = data;
@@ -703,7 +704,6 @@ static void ogl_flip_blocks(ALLEGRO_LOCKED_REGION *lr, int wc, int hc)
          }
          break;
       }
-#endif
       default:
          (void)x;
          (void)y;
@@ -717,7 +717,7 @@ static void ogl_flip_blocks(ALLEGRO_LOCKED_REGION *lr, int wc, int hc)
 static ALLEGRO_LOCKED_REGION *ogl_lock_compressed_region(ALLEGRO_BITMAP *bitmap,
    int x, int y, int w, int h, int flags)
 {
-#if !defined ALLEGRO_ANDROID && !defined ALLEGRO_IPHONE
+#if !defined ALLEGRO_CFG_OPENGLES
    ALLEGRO_BITMAP_EXTRA_OPENGL *const ogl_bitmap = bitmap->extra;
    ALLEGRO_DISPLAY *disp;
    ALLEGRO_DISPLAY *old_disp = NULL;
@@ -831,7 +831,9 @@ static ALLEGRO_LOCKED_REGION *ogl_lock_compressed_region(ALLEGRO_BITMAP *bitmap,
       }
    }
 
+#ifdef GL_CLIENT_PIXEL_STORE_BIT
    glPopClientAttrib();
+#endif
 
    if (old_disp != NULL) {
       _al_set_current_display_only(old_disp);
@@ -859,6 +861,7 @@ static ALLEGRO_LOCKED_REGION *ogl_lock_compressed_region(ALLEGRO_BITMAP *bitmap,
 
 static void ogl_unlock_compressed_region(ALLEGRO_BITMAP *bitmap)
 {
+#if !defined ALLEGRO_CFG_OPENGLES
    ALLEGRO_BITMAP_EXTRA_OPENGL *ogl_bitmap = bitmap->extra;
    int lock_format = bitmap->locked_region.format;
    ALLEGRO_DISPLAY *old_disp = NULL;
@@ -931,6 +934,9 @@ static void ogl_unlock_compressed_region(ALLEGRO_BITMAP *bitmap)
 EXIT:
    al_free(ogl_bitmap->lock_buffer);
    ogl_bitmap->lock_buffer = NULL;
+#else
+   (void)bitmap;
+#endif
 }
 
 static void ogl_backup_dirty_bitmap(ALLEGRO_BITMAP *b)

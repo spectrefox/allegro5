@@ -61,6 +61,15 @@ static void android_get_keyboard_state(ALLEGRO_KEYBOARD_STATE *ret_state)
    _al_event_source_unlock(&the_keyboard.es);
 }
 
+static void android_clear_keyboard_state(void)
+{
+   _al_event_source_lock(&the_keyboard.es);
+   {
+      memset(&the_state, 0, sizeof(the_state));
+   }
+   _al_event_source_unlock(&the_keyboard.es);
+}
+
 static ALLEGRO_KEYBOARD_DRIVER android_keyboard_driver = {
     AL_ID('A','N','D','R'),
     "",
@@ -71,7 +80,8 @@ static ALLEGRO_KEYBOARD_DRIVER android_keyboard_driver = {
     android_get_keyboard,
     android_set_keyboard_leds,
     android_keycode_to_name,
-    android_get_keyboard_state
+    android_get_keyboard_state,
+    android_clear_keyboard_state
 };
 
 ALLEGRO_KEYBOARD_DRIVER *_al_get_android_keyboard_driver(void)
@@ -95,9 +105,9 @@ static void android_keyboard_handle_event(ALLEGRO_DISPLAY *display,
    }
 
    _al_event_source_lock(&the_keyboard.es);
-   
+
    if (_al_event_source_needs_to_generate_event(&the_keyboard.es)) {
-      
+
       event.keyboard.type = event_type;
       event.keyboard.timestamp = al_get_time();
       event.keyboard.display = display;
@@ -105,10 +115,10 @@ static void android_keyboard_handle_event(ALLEGRO_DISPLAY *display,
       event.keyboard.unichar = unichar;
       event.keyboard.modifiers = 0;
       event.keyboard.repeat = event_type == ALLEGRO_EVENT_KEY_CHAR;
-      
+
       _al_event_source_emit_event(&the_keyboard.es, &event);
    }
-   
+
    _al_event_source_unlock(&the_keyboard.es);
 }
 

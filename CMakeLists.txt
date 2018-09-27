@@ -20,7 +20,7 @@ cmake_minimum_required(VERSION 2.8.5 FATAL_ERROR)
 if(COMMAND cmake_policy)
     cmake_policy(SET CMP0003 NEW)
     if(POLICY CMP0026)
-        cmake_policy(SET CMP0026 OLD)
+        cmake_policy(SET CMP0026 NEW)
     endif()
 endif(COMMAND cmake_policy)
 
@@ -40,9 +40,9 @@ endif(ANDROID)
 option(WANT_GLES2 "Compile with GLES2 support" ON)
 option(WANT_GLES3 "Compile with GLES3 support" OFF)
 option(ALLEGRO_SDL "Build using the SDL backend (experimental)" OFF)
-option(WANT_STATIC_RUNTIME "Whether or not to link the C and C++ runtimes statically (currently only implemented for MSVC)" OFF)
+option(WANT_STATIC_RUNTIME "Whether or not to link the C and C++ runtimes statically (currently only implemented on Windows)" OFF)
 
-set(ALLEGRO_VERSION 5.2.3)
+set(ALLEGRO_VERSION 5.2.5)
 string(REGEX MATCH "^[0-9]+[.][0-9]+" ALLEGRO_SOVERSION ${ALLEGRO_VERSION})
 string(REPLACE "." "" ALLEGRO_DLL_SHORTVER ${ALLEGRO_SOVERSION})
 
@@ -105,6 +105,8 @@ option(WANT_EMBED
 set(FRAMEWORK_INSTALL_PREFIX "/Library/Frameworks" CACHE STRING
     "Directory in which to install Mac OS X frameworks")
 
+option(PREFER_STATIC_DEPS "Whether to prefer static dependencies." off)
+
 #
 # Platforms and drivers.
 #
@@ -118,7 +120,6 @@ option(WANT_D3D9EX "Enable Direct3D 9Ex extensions (Vista)" off)
 option(WANT_OPENGL "Enable OpenGL graphics driver (Windows, X11, OS X))" on)
 option(WANT_SHADERS_GL "Build GLSL shader support (OpenGL)" on)
 option(WANT_SHADERS_D3D "Build HLSL shader support (Direct3D)" on)
-option(WANT_OPENGL_S3TC_LOCKING "Whether to support blocked locking of DXT1, DXT2, and DXT3 formats in OpenGL." off)
 
 #
 # Addons.
@@ -132,6 +133,7 @@ if (NOT IPHONE)
     option(WANT_IMAGE_JPG "Enable JPEG support in image addon" on)
     option(WANT_IMAGE_PNG "Enable PNG support in image addon" on)
 endif (NOT IPHONE)
+option(WANT_IMAGE_WEBP "Enable WebP support in image addon" on)
 
 option(WANT_TTF "Enable TTF addon" on)
 option(WANT_COLOR "Enable color addon" on)
@@ -148,6 +150,7 @@ option(WANT_MONOLITH "Include all addons in the main library" off)
 #
 
 option(WANT_PYTHON_WRAPPER "Enable generation of the Python wrapper" off)
+option(WANT_LUAJIT "Enable generation of the Luajit wrapper" off)
 
 #
 # Documentation.
@@ -195,16 +198,6 @@ option(WANT_TESTS "Build test programs" on)
 
 include(CheckCSourceCompiles)
 include(CheckCXXSourceCompiles)
-
-if(CMAKE_COMPILER_IS_GNUCC)
-   get_gcc_system_include_dirs("c" "${CMAKE_C_COMPILER}" "${CMAKE_C_FLAGS}" SYSTEM_INCLUDE_DIRS)
-   set(CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES ${CMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES} ${SYSTEM_INCLUDE_DIRS})
-endif()
-
-if(CMAKE_COMPILER_IS_GNUCXX)
-   get_gcc_system_include_dirs("c++" "${CMAKE_CXX_COMPILER}" "${CMAKE_CXX_FLAGS}" SYSTEM_INCLUDE_DIRS)
-   set(CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES} ${SYSTEM_INCLUDE_DIRS})
-endif()
 
 if(CMAKE_COMPILER_IS_GNUCC)
     set(COMPILER_GCC 1)
@@ -484,6 +477,10 @@ check_function_exists(fseeko ALLEGRO_HAVE_FSEEKO)
 check_function_exists(ftello ALLEGRO_HAVE_FTELLO)
 check_function_exists(strerror_r ALLEGRO_HAVE_STRERROR_R)
 check_function_exists(strerror_s ALLEGRO_HAVE_STRERROR_S)
+if(WIN32)
+    check_function_exists(_ftelli64 ALLEGRO_HAVE_FTELLI64)
+    check_function_exists(_fseeki64 ALLEGRO_HAVE_FSEEKI64)
+endif()
 
 check_type_size("_Bool" ALLEGRO_HAVE__BOOL)
 
@@ -544,6 +541,12 @@ run_c_compile_test("
 # generally that's just due to sloppiness.
 #
 
+if(PREFER_STATIC_DEPS)
+   set(CMAKE_FIND_LIBRARY_SUFFIXES "${CMAKE_STATIC_LIBRARY_SUFFIX}"
+                                   "${CMAKE_SHARED_LIBRARY_SUFFIX}"
+                                   "${CMAKE_SHARED_MODULE_SUFFIX}")
+endif()
+
 if(WANT_OPENGL)
     find_package(OpenGL)
     if(ANDROID)
@@ -580,13 +583,6 @@ if(WANT_OPENGL)
         set(ALLEGRO_CFG_OPENGL_PROGRAMMABLE_PIPELINE 1)
     endif()
 endif(WANT_OPENGL)
-
-if(WANT_OPENGL_S3TC_LOCKING)
-    set(ALLEGRO_CFG_OPENGL_S3TC_LOCKING 1)
-else()
-    message("S3TC locking disabled. You will not be able to load/save "
-            "pre-compressed textures with OpenGL.")
-endif()
 
 #
 # Unix-specific
@@ -634,6 +630,13 @@ if(SUPPORT_X11)
     else(CAN_XCURSOR)
         message(FATAL_ERROR "X11 support requires Xcursor library.")
     endif(CAN_XCURSOR)
+
+    check_library_exists(Xpm XpmCreatePixmapFromData "" CAN_XPM)
+    if(CAN_XPM)
+        set(ALLEGRO_XWINDOWS_WITH_XPM 1)
+        find_library(XPM_LIB "Xpm")
+        list(APPEND X11_LIBRARIES "${XPM_LIB}")
+    endif(CAN_XPM)
 
     check_include_file("X11/extensions/XInput2.h" CAN_XINPUT2)
     run_c_compile_test("
@@ -698,7 +701,7 @@ if(WIN32)
         # At least some copies of dinput.h redefine some types multiple times.
         # We must add the directory as a system directory so that the compiler
         # will suppress such errors.
-        include_directories(SYSTEM ${DINPUT_INCLUDE_DIR})
+        include_directories(${DINPUT_INCLUDE_DIR})
     else(DINPUT_FOUND)
         message(FATAL_ERROR
             "Windows port requires DirectInput (not found).")
@@ -719,7 +722,7 @@ if(WIN32)
     
     if(SUPPORT_D3D)
         if(D3DX9_FOUND)
-            include_directories(BEFORE SYSTEM ${D3DX9_INCLUDE_DIR})
+            include_directories(BEFORE ${D3DX9_INCLUDE_DIR})
             set(ALLEGRO_CFG_D3DX9 1)
         else()
             message("D3DX9 not found. You will not be able to compress or "
@@ -865,7 +868,7 @@ endforeach(genfile)
 
 if(ALLEGRO_SDL)
     list(APPEND LIBRARY_SOURCES ${ALLEGRO_SRC_SDL_FILES})
-    list(APPEND PLATFORM_LIBS ${SDL2_LIBRARIES} pthread dl m)
+    list(APPEND PLATFORM_LIBS ${SDL2_LIBRARY} dl m)
     include_directories(${SDL2_INCLUDE_DIR})
 endif(ALLEGRO_SDL)
 
@@ -900,7 +903,7 @@ set(MONOLITH_SOURCES ${LIBRARY_SOURCES})
 add_subdirectory(addons)
 
 if(WANT_MONOLITH)
-    include_directories(SYSTEM ${MONOLITH_INCLUDE_DIRECTORIES})
+    include_directories(${MONOLITH_INCLUDE_DIRECTORIES})
 
     # For OSX, we need to set the header location inside the framework for each
     # file (relative to the current directory, so for example when the
@@ -979,6 +982,16 @@ endif(WANT_EXAMPLES)
 if(WANT_TESTS)
     add_subdirectory(tests)
 endif(WANT_TESTS)
+
+#-----------------------------------------------------------------------------#
+#
+# contrib/Luajit
+#
+#-----------------------------------------------------------------------------#
+
+if(WANT_LUAJIT)
+    add_subdirectory(contrib/luajit)
+endif(WANT_LUAJIT)
 
 #-----------------------------------------------------------------------------#
 #

@@ -16,6 +16,8 @@
    #include <GdiPlus.h>
 #endif
 
+ALLEGRO_DEBUG_CHANNEL("image")
+
 /* Needed with the MinGW w32api-3.15 headers. */
 using namespace Gdiplus;
 
@@ -321,6 +323,7 @@ ALLEGRO_BITMAP *_al_load_gdiplus_bitmap_f(ALLEGRO_FILE *fp, int flags)
 {
    AllegroWindowsStream *s = new AllegroWindowsStream(fp);
    if (!s) {
+      ALLEGRO_ERROR("Unable to create AllegroWindowsStream.\n");
       return NULL;
    }
 
@@ -388,11 +391,13 @@ bool _al_save_gdiplus_bitmap_f(ALLEGRO_FILE *fp, const char *ident,
    }
 
    if (encoder_status == -1) {
+      ALLEGRO_ERROR("Invalid encoder status.\n");
       return false;    
    }
 
    AllegroWindowsStream *s = new AllegroWindowsStream(fp);
    if (!s) {
+      ALLEGRO_ERROR("Couldn't create AllegroWindowsStream.\n");
       return false;
    }
 
@@ -407,7 +412,7 @@ bool _al_save_gdiplus_bitmap_f(ALLEGRO_FILE *fp, const char *ident,
 
       if (!gdi_bmp->LockBits(&rect, Gdiplus::ImageLockModeWrite,
             PixelFormat32bppARGB, gdi_lock)) {
-            	            	
+
          ALLEGRO_LOCKED_REGION *a_lock = al_lock_bitmap(
             a_bmp, ALLEGRO_PIXEL_FORMAT_ARGB_8888, ALLEGRO_LOCK_READONLY);
 
@@ -423,7 +428,7 @@ bool _al_save_gdiplus_bitmap_f(ALLEGRO_FILE *fp, const char *ident,
                while (rows--) {
                   memcpy(out, in, w * 4);
                   in += a_lock->pitch;
-                  out += gdi_lock->Stride;				
+                  out += gdi_lock->Stride;
                }
             }
 
@@ -431,10 +436,10 @@ bool _al_save_gdiplus_bitmap_f(ALLEGRO_FILE *fp, const char *ident,
          }
          gdi_bmp->UnlockBits(gdi_lock);
       }
-				
+
       ret = (gdi_bmp->Save(s, &encoder, NULL) == 0);
 
-      delete gdi_lock;		
+      delete gdi_lock;
       delete gdi_bmp;
    }
 

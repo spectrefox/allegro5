@@ -74,6 +74,8 @@ static ALLEGRO_BITMAP *create_memory_bitmap(ALLEGRO_DISPLAY *current_display,
    bitmap->parent = NULL;
    bitmap->xofs = bitmap->yofs = 0;
    bitmap->memory = al_malloc(pitch * h);
+   bitmap->use_bitmap_blender = false;
+   bitmap->blender.blend_color = al_map_rgba(0, 0, 0, 0);
    
    _al_register_convert_bitmap(bitmap);
    return bitmap;
@@ -151,6 +153,8 @@ ALLEGRO_BITMAP *_al_create_bitmap_params(ALLEGRO_DISPLAY *current_display,
    bitmap->dirty = !(bitmap->_flags & ALLEGRO_NO_PRESERVE_TEXTURE);
    bitmap->_depth = depth;
    bitmap->_samples = samples;
+   bitmap->use_bitmap_blender = false;
+   bitmap->blender.blend_color = al_map_rgba(0, 0, 0, 0);
 
    /* The display driver should have set the bitmap->memory field if
     * appropriate; video bitmaps may leave it NULL.
@@ -361,6 +365,121 @@ int al_get_bitmap_samples(ALLEGRO_BITMAP *bitmap)
       return bitmap->_samples;
 }
 
+/* Function: al_get_bitmap_blend_color
+ */
+ALLEGRO_COLOR al_get_bitmap_blend_color(void)
+{
+   ALLEGRO_BITMAP *bitmap = al_get_target_bitmap();
+   ALLEGRO_BLENDER *b;
+
+   ASSERT(bitmap);
+
+   if (!bitmap->use_bitmap_blender) {
+      /* If no bitmap blender set, use TLS */
+      return al_get_blend_color();
+   }
+   
+   b = &bitmap->blender;
+   return b->blend_color;
+}
+
+/* Function: al_get_bitmap_blender
+ */
+void al_get_bitmap_blender(int *op, int *src, int *dst)
+{
+   al_get_separate_bitmap_blender(op, src, dst, NULL, NULL, NULL);
+}
+
+/* Function: al_get_separate_bitmap_blender
+ */
+void al_get_separate_bitmap_blender(int *op, int *src, int *dst, int *alpha_op, int *alpha_src, int *alpha_dst)
+{
+   ALLEGRO_BITMAP *bitmap = al_get_target_bitmap();
+   ALLEGRO_BLENDER *b;
+
+   ASSERT(bitmap);
+
+   if (!bitmap->use_bitmap_blender) {
+      /* If no bitmap blender set, use TLS */
+      al_get_separate_blender(op, src, dst, alpha_op, alpha_src, alpha_dst);
+      return;
+   }
+
+   b = &bitmap->blender;
+
+   if (op)
+      *op = b->blend_op;
+
+   if (src)
+      *src = b->blend_source;
+
+   if (dst)
+      *dst = b->blend_dest;
+
+   if (alpha_op)
+      *alpha_op = b->blend_alpha_op;
+
+   if (alpha_src)
+      *alpha_src = b->blend_alpha_source;
+
+   if (alpha_dst)
+      *alpha_dst = b->blend_alpha_dest;
+}
+
+/* Function: al_set_bitmap_blend_color
+ */
+void al_set_bitmap_blend_color(ALLEGRO_COLOR col)
+{
+   ALLEGRO_BITMAP *bitmap = al_get_target_bitmap();
+   ALLEGRO_BLENDER *b;
+
+   ASSERT(bitmap);
+
+   b = &bitmap->blender;
+   b->blend_color = col;
+}
+
+/* Function: al_set_bitmap_blender
+ */
+void al_set_bitmap_blender(int op, int src, int dest)
+{
+   ALLEGRO_BITMAP *bitmap = al_get_target_bitmap();
+
+   ASSERT(bitmap);
+
+   al_set_separate_bitmap_blender(op, src, dest, op, src, dest);
+}
+
+/* Function: al_set_separate_bitmap_blender
+ */
+void al_set_separate_bitmap_blender(int op, int src, int dst, int alpha_op, int alpha_src, int alpha_dst)
+{
+   ALLEGRO_BITMAP *bitmap = al_get_target_bitmap();
+   ALLEGRO_BLENDER *b;
+
+   ASSERT(bitmap);
+
+   bitmap->use_bitmap_blender = true;
+   b = &bitmap->blender;
+   b->blend_op = op;
+   b->blend_source = src;
+   b->blend_dest = dst;
+   b->blend_alpha_op = alpha_op;
+   b->blend_alpha_source = alpha_src;
+   b->blend_alpha_dest = alpha_dst;
+}
+
+/* Function: al_reset_bitmap_blender
+ */
+void al_reset_bitmap_blender(void)
+{
+   ALLEGRO_BITMAP *bitmap = al_get_target_bitmap();
+
+   ASSERT(bitmap);
+
+   bitmap->use_bitmap_blender = false;
+   bitmap->blender.blend_color = al_map_rgba(0, 0, 0, 0);
+}
 
 /* Function: al_set_clipping_rectangle
  */
@@ -383,6 +502,12 @@ void al_set_clipping_rectangle(int x, int y, int width, int height)
    }
    if (y + height > bitmap->h) {
       height = bitmap->h - y;
+   }
+   if (width < 0) {
+      width = 0;
+   }
+   if (height < 0) {
+      height = 0;
    }
 
    bitmap->cl = x;
@@ -481,8 +606,8 @@ void al_reparent_bitmap(ALLEGRO_BITMAP *bitmap, ALLEGRO_BITMAP *parent,
    int x, int y, int w, int h)
 {
    ASSERT(bitmap->parent);
-   // Re-parenting a non-sub-bitmap makes no sense, so in release mode
-   // just ignore it.
+   /* Re-parenting a non-sub-bitmap makes no sense, so in release mode
+    * just ignore it. */
    if (!bitmap->parent)
       return;
 

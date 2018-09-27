@@ -41,14 +41,30 @@ static wchar_t* wlog_edit_control = L"EDIT";
 /* True if output support unicode */
 static bool wlog_unicode = false;
 
+static ALLEGRO_MUTEX* global_mutex;
+
+static ALLEGRO_COND* wm_size_cond;
+static bool got_wm_size_event = false;
+
 
 bool _al_init_native_dialog_addon(void)
 {
+   global_mutex = al_create_mutex();
+   wm_size_cond = al_create_cond();
+   if (!global_mutex || !wm_size_cond) {
+      al_destroy_mutex(global_mutex);
+      al_destroy_cond(wm_size_cond);
+      return false;
+   }
    return true;
 }
 
 void _al_shutdown_native_dialog_addon(void)
 {
+   al_destroy_mutex(global_mutex);
+   al_destroy_cond(wm_size_cond);
+   global_mutex = NULL;
+   wm_size_cond = NULL;
 }
 
 
@@ -337,7 +353,7 @@ int _al_show_native_message_box(ALLEGRO_DISPLAY *display,
    if (result == IDYES || result == IDOK)
       return 1;
    else
-      return 0;
+      return 2;
 }
 
 
@@ -686,10 +702,15 @@ static bool menu_callback(ALLEGRO_DISPLAY *display, UINT msg, WPARAM wParam, LPA
 
    if (msg == WM_COMMAND && lParam == 0) {
       const int id = LOWORD(wParam);
-      ALLEGRO_MENU *menu = _al_find_parent_menu_by_id(display, id);
-      if (menu && (al_get_menu_item_flags(menu, id) & ALLEGRO_MENU_ITEM_CHECKBOX)) {
-         /* Toggle the checkbox, since Windows doesn't do that automatically. */
-         al_toggle_menu_item_flags(menu, id, ALLEGRO_MENU_ITEM_CHECKED);
+      _AL_MENU_ID *menu_id = _al_find_parent_menu_by_id(display, id);
+      if (menu_id) {
+         int index;
+         if (_al_find_menu_item_unique(menu_id->menu, id, NULL, &index)) {
+            if (al_get_menu_item_flags(menu_id->menu, -index) & ALLEGRO_MENU_ITEM_CHECKBOX) {
+               /* Toggle the checkbox, since Windows doesn't do that automatically. */
+               al_toggle_menu_item_flags(menu_id->menu, -index, ALLEGRO_MENU_ITEM_CHECKED);
+            }
+         }
       }
       _al_emit_menu_event(display, id);
       return true;
@@ -722,6 +743,11 @@ static bool menu_callback(ALLEGRO_DISPLAY *display, UINT msg, WPARAM wParam, LPA
       SetMenu(al_get_win_window_handle(display), (HMENU) menu->extra1);
       return true;
    }
+   else if (msg == WM_SIZE) {
+      ALLEGRO_DEBUG("Got the WM_SIZE event.\n");
+      got_wm_size_event = true;
+      al_signal_cond(wm_size_cond);
+   }
    else if (msg == WM_MENUSELECT) {
       /* XXX: could use this as a way to indicate the popup menu was canceled */
    }
@@ -735,7 +761,7 @@ static void init_menu_info(MENUITEMINFO *info, ALLEGRO_MENU_ITEM *menu)
 
    info->cbSize = sizeof(*info);   
    info->fMask = MIIM_FTYPE | MIIM_STATE | MIIM_ID | MIIM_SUBMENU | MIIM_STRING | MIIM_CHECKMARKS;
-   info->wID = menu->id;
+   info->wID = menu->unique_id;
 
    if (!menu->caption) {
       info->fType = MFT_SEPARATOR;
@@ -847,7 +873,19 @@ bool _al_show_display_menu(ALLEGRO_DISPLAY *display, ALLEGRO_MENU *menu)
       to call this many times. */
    al_win_add_window_callback(display, menu_callback, NULL);
 
+   got_wm_size_event = false;
    PostMessage(al_get_win_window_handle(display), WM_SHOW_MENU, 0, (LPARAM) menu);
+
+   /* Wait for the WM_SIZE event, otherwise the compensatory
+    * al_resize_display (see menu.c) won't work right. */
+   if (wm_size_cond && global_mutex) {
+      ALLEGRO_DEBUG("Sent WM_SHOW_MENU, waiting for WM_SIZE.\n");
+      al_lock_mutex(global_mutex);
+      while (!got_wm_size_event) {
+         al_wait_cond(wm_size_cond, global_mutex);
+      }
+      al_unlock_mutex(global_mutex);
+   }
    
    return true;
 }
@@ -858,7 +896,19 @@ bool _al_hide_display_menu(ALLEGRO_DISPLAY *display, ALLEGRO_MENU *menu)
    if (!hwnd) return false;
 
    /* Must be run from the main thread to avoid a crash. */
+   got_wm_size_event = false;
    PostMessage(al_get_win_window_handle(display), WM_HIDE_MENU, 0, (LPARAM) menu);
+
+   /* Wait for the WM_SIZE event, otherwise the compensatory
+    * al_resize_display (see menu.c) won't work right. */
+   if (wm_size_cond && global_mutex) {
+      ALLEGRO_DEBUG("Sent WM_HIDE_MENU, waiting for WM_SIZE.\n");
+      al_lock_mutex(global_mutex);
+      while (!got_wm_size_event) {
+         al_wait_cond(wm_size_cond, global_mutex);
+      }
+      al_unlock_mutex(global_mutex);
+   }
 
    (void) menu;
    
@@ -876,6 +926,11 @@ bool _al_show_popup_menu(ALLEGRO_DISPLAY *display, ALLEGRO_MENU *menu)
    PostMessage(al_get_win_window_handle(display), WM_SHOW_POPUP, 0, (LPARAM) menu);
 
    return true;
+}
+
+int _al_get_menu_display_height(void)
+{
+   return GetSystemMetrics(SM_CYMENU);
 }
 
 /* vim: set sts=3 sw=3 et: */

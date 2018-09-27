@@ -60,7 +60,9 @@ void _al_sdl_keyboard_event(SDL_Event *e)
       event.keyboard.keycode = keyboard->table[e->key.keysym.scancode];
       event.keyboard.unichar = keyboard->unicode[e->key.keysym.scancode];
       event.keyboard.display = _al_sdl_find_display(e->key.windowID);
-      _al_event_source_emit_event(es, &event);
+      if (!e->key.repeat) {
+         _al_event_source_emit_event(es, &event);
+      }
 
       if (keyboard->create_extra_char[e->key.keysym.scancode]) {
          event.keyboard.type = ALLEGRO_EVENT_KEY_CHAR;
@@ -386,6 +388,11 @@ static void sdl_get_keyboard_state(ALLEGRO_KEYBOARD_STATE *ret_state)
    ret_state->display = keyboard->display;
 }
 
+static void sdl_clear_keyboard_state(void)
+{
+   return;
+}
+
 ALLEGRO_KEYBOARD_DRIVER *_al_sdl_keyboard_driver(void)
 {
    if (vt)
@@ -402,5 +409,6 @@ ALLEGRO_KEYBOARD_DRIVER *_al_sdl_keyboard_driver(void)
    vt->set_keyboard_leds = sdl_set_keyboard_leds;
    vt->keycode_to_name = sdl_keycode_to_name;
    vt->get_keyboard_state = sdl_get_keyboard_state;
+   vt->clear_keyboard_state = sdl_clear_keyboard_state;
    return vt;
 }

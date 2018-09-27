@@ -18,7 +18,6 @@
  */
 
 
-#include <stdint.h>
 #include <string.h>
 
 #include "allegro5/allegro.h"
@@ -790,6 +789,9 @@ static bool read_bitfields_image(ALLEGRO_FILE *f, int flags,
                   tempconvert[i] = al_malloc(sizeof(int) * entries);
                   generate_scale_table(tempconvert[i], entries);
                }
+               else {
+                  tempconvert[i] = NULL;
+               }
             }
             else {
                tempconvert[i] = NULL;
@@ -1154,7 +1156,7 @@ ALLEGRO_BITMAP *_al_load_bmp_f(ALLEGRO_FILE *f, int flags)
 
    biSize = (uint32_t)al_fread32le(f);
    if (al_feof(f) || al_ferror(f)) {
-      ALLEGRO_ERROR("EOF or file error\n");
+      ALLEGRO_ERROR("EOF or file error while reading bitmap header.\n");
       return NULL;
    }
 
@@ -1590,8 +1592,10 @@ ALLEGRO_BITMAP *_al_load_bmp(const char *filename, int flags)
    ASSERT(filename);
 
    f = al_fopen(filename, "rb");
-   if (!f)
+   if (!f) {
+      ALLEGRO_ERROR("Unable to open %s for reading.\n", filename);
       return NULL;
+   }
 
    bmp = _al_load_bmp_f(f, flags);
 
@@ -1609,8 +1613,10 @@ bool _al_save_bmp(const char *filename, ALLEGRO_BITMAP *bmp)
    ASSERT(filename);
 
    f = al_fopen(filename, "wb");
-   if (!f)
+   if (!f) {
+      ALLEGRO_ERROR("Unable to open %s for writing.\n", filename);
       return false;
+   }
 
    retsave = _al_save_bmp_f(f, bmp);
    retclose = al_fclose(f);

@@ -119,6 +119,7 @@ void _al_shutdown_native_dialog_addon(void)
 bool _al_show_native_file_dialog(ALLEGRO_DISPLAY *display,
                                  ALLEGRO_NATIVE_DIALOG *fd)
 {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     (void)display;
     
     [ALLEGFileDialog performSelectorOnMainThread: @selector(displayFileDialog:)
@@ -126,6 +127,8 @@ bool _al_show_native_file_dialog(ALLEGRO_DISPLAY *display,
                                 waitUntilDone: YES];
     _al_osx_clear_mouse_state();
     
+    [pool release];
+
     return true;
 }
 
@@ -460,6 +463,11 @@ bool _al_show_popup_menu(ALLEGRO_DISPLAY *display, ALLEGRO_MENU *amenu)
     return true;
 }
 
+int _al_get_menu_display_height(void)
+{
+   return 0;
+}
+
 @implementation ALLEGMenuTarget
 /* Initial conversion of ALLEGRO_MENU_ITEM to NSMenuItem.
  * The target (self) is set for the item.
@@ -475,6 +483,7 @@ bool _al_show_popup_menu(ALLEGRO_DISPLAY *display, ALLEGRO_MENU *amenu)
                                           action:@selector(activated:)
                                    keyEquivalent:key];
         [item setTarget:self];
+        aitem->extra1 = item;
         return item;
     } else {
         item = [NSMenuItem separatorItem];
@@ -518,23 +527,16 @@ bool _al_show_popup_menu(ALLEGRO_DISPLAY *display, ALLEGRO_MENU *amenu)
 // Get the ALLEGRO_MENU_ITEM corresponding to this NSMenuItem
 - (ALLEGRO_MENU_ITEM*) allegroItemforItem: (NSMenuItem*) mi
 {
-    unsigned int index = (int) [self.menu indexOfItem:mi];
-    if (self->_hasAppMenu) {
-        /* If the app menu is showing it will be at index 0 so account for this */
-        if (index == 0) {
-            return NULL;
-        } else {
-            --index;
+    int i;
+    ALLEGRO_MENU_ITEM * ami;
+
+    for (i = 0; i < (int)_al_vector_size(&self->amenu->items); i++) {
+        ami = *(ALLEGRO_MENU_ITEM**) _al_vector_ref(&self->amenu->items, i);
+        if (ami->extra1 == mi) {
+            return ami;
         }
     }
-    if (index < _al_vector_size(&self->amenu->items))
-    {
-        return *(ALLEGRO_MENU_ITEM**) _al_vector_ref(&self->amenu->items, index);
-    }
-    else
-    {
-        return NULL;
-    }
+    return NULL;
 }
 // Create target with ALLEGRO_MENU bound to it.
 - (id)initWithMenu:(ALLEGRO_MENU*) source_menu
@@ -582,12 +584,13 @@ bool _al_show_popup_menu(ALLEGRO_DISPLAY *display, ALLEGRO_MENU *amenu)
         if (aitim->flags & ALLEGRO_MENU_ITEM_CHECKBOX) {
             aitim->flags ^= ALLEGRO_MENU_ITEM_CHECKED;
         }
-        _al_emit_menu_event(aitim->parent->display, aitim->id);
+        _al_emit_menu_event(aitim->parent->display, aitim->unique_id);
     }
 }
 // Insert an item, keep the NSMenu in sync
 -(void) insertItem:(ALLEGRO_MENU_ITEM*) aitem atIndex: (int) index
 {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSMenuItem* item = [self buildMenuItemFor:aitem];
     [self.menu insertItem:item atIndex:index];
     if (aitem->popup) {
@@ -595,23 +598,28 @@ bool _al_show_popup_menu(ALLEGRO_DISPLAY *display, ALLEGRO_MENU *amenu)
         [[sub menu] setTitle:[item title]];
         [item setSubmenu:[sub menu]];
     }
+    [pool release];
 }
 // Update an item (caption only, see -validateMenuItem: )
 -(void) updateItem:(ALLEGRO_MENU_ITEM *)aitem atIndex:(int)index
 {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     (void) index;
     NSMenuItem* item = [self itemForAllegroItem:aitem];
     NSMutableString* caption = [NSMutableString stringWithUTF8String:al_cstr(aitem->caption)];
     NSString* key = extract_accelerator(caption);
     [item setTitle:caption];
     [item setKeyEquivalent:key];
+    [pool release];
 }
 // Remove an item, keep the NSMenu in sync
 -(void) destroyItem:(ALLEGRO_MENU_ITEM *)aitem atIndex:(int)index
 {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     (void) index;
     NSMenuItem* item = [self itemForAllegroItem:aitem];
     [item.menu removeItem:item];
+    [pool release];
 }
 // Show the menu on the main application menu bar
 -(void) show
@@ -714,6 +722,7 @@ static ALLEGTargetManager* _sharedmanager = nil;
 // Link a menu with a window, replace any existing link
 -(void) setMenu:(NSMenu *)menu forWindow:(NSWindow *)window
 {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSUInteger index = [self indexForWindow:window];
     if (menu) {
         NSDictionary* newentry = [NSDictionary dictionaryWithObjectsAndKeys:menu, @"menu", window, @"window", nil];
@@ -729,5 +738,6 @@ static ALLEGTargetManager* _sharedmanager = nil;
             [self->_items removeObjectAtIndex:index];
         }
     }
+    [pool release];
 }
 @end // ALLEGTargetManager

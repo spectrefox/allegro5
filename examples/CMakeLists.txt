@@ -66,6 +66,7 @@ set(DATA_IMAGES
 
 set(DATA_TTF
     DejaVuSans.ttf
+    a4_font.fnt
     )
 
 set(DATA_AUDIO
@@ -108,16 +109,19 @@ if(NOT MSVC)
     example(ex_utf8)
 endif(NOT MSVC)
 
+example(ex_android ${IMAGE} ${PRIM} ${DATA_IMAGES})
 example(ex_bitmap ${IMAGE} ${DATA_IMAGES})
 example(ex_bitmap_flip ${IMAGE} ${FONT} ${DATA_IMAGES})
 example(ex_blend ${FONT} ${IMAGE} ${PRIM} ${DATA_IMAGES})
 example(ex_blend2 ex_blend2.cpp ${NIHGUI} ${IMAGE} ${DATA_IMAGES})
 example(ex_blend_bench ${IMAGE} ${PRIM} ${DATA_IMAGES})
 example(ex_blend_test ${PRIM})
+example(ex_blend_target ${IMAGE} ${DATA_IMAGES})
 example(ex_blit ${FONT} ${IMAGE} ${COLOR} ${DATA_IMAGES})
 example(ex_clip ${FONT} ${COLOR})
 example(ex_clipboard ${IMAGE} ${FONT} ${DATA_IMAGES})
 example(ex_color ex_color.cpp ${NIHGUI} ${TTF} ${COLOR} DATA ${DATA_TTF})
+example(ex_color2 ex_color2.c ${FONT} ${COLOR} ${PRIM})
 example(ex_compressed ${IMAGE} ${FONT} ${DATA_IMAGES})
 example(ex_convert CONSOLE ${IMAGE})
 example(ex_cpu ${FONT})
@@ -182,6 +186,7 @@ example(ex_vertex_buffer ${FONT} ${PRIM})
 example(ex_vsync ${FONT} ${IMAGE} ${PRIM})
 example(ex_windows ${FONT} ${IMAGE})
 example(ex_window_constraints ${FONT} ${IMAGE})
+example(ex_window_maximized ${FONT} ${IMAGE} ${PRIM} ${DIALOG})
 example(ex_window_title ${IMAGE} ${FONT} ${DATA_IMAGES})
 example(ex_winfull)
 example(ex_video ${AUDIO} ${FONT} ${PRIM} ${VIDEO})
@@ -206,7 +211,7 @@ example(ex_font_multiline ex_font_multiline.cpp ${NIHGUI} ${IMAGE} ${TTF} ${COLO
 example(ex_logo ${FONT} ${TTF} ${IMAGE} ${PRIM} DATA ${DATA_TTF})
 example(ex_projection ${TTF} ${IMAGE} ${DATA_IMAGES} ${DATA_TTF})
 example(ex_projection2 ${PRIM} ${FONT} ${IMAGE} ${DATA_IMAGES})
-example(ex_camera ${FONT} ${COLOR} ${PRIM})
+example(ex_camera ${FONT} ${COLOR} ${PRIM} ${IMAGE})
 example(ex_ttf ${TTF} ${PRIM} ${IMAGE} DATA ${DATA_TTF} ex_ttf.ini)
 
 example(ex_acodec CONSOLE ${AUDIO} ${ACODEC})
